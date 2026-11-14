@@ -2,6 +2,15 @@
 
 Cette page liste le matériel : serveurs, équipements réseau, périphériques et postes de travail. La répartition des services entre les serveurs est décrite dans la page [Architecture](architecture.md#hotes), les réseaux dans la page [Réseau](reseau.md).
 
+## 🏷️ Nomenclature {#nomenclature}
+
+Chaque appareil porte le nom d’une capitale européenne :
+
+- **Sans rapport avec l’appareil :** le nom ne dit ni son rôle ni son emplacement réel ; c’est cette page qui fait le lien.
+- **Un nom technique sans accent :** le nom s’écrit en français dans la documentation (Athènes) et, pour l’hôte, le DNS et NetBird, en minuscules, sans accent ni espace (`athenes`).
+- **Jamais réutilisé :** le nom d’un appareil retiré n’est pas réattribué, pour qu’une ancienne clé SSH ou entrée DNS ne désigne jamais une autre machine.
+- **Un nom par appareil :** serveurs, équipements réseau, périphériques et postes partagent la même liste, celle de cette page.
+
 ## 🖥️ Serveurs
 
 ### Bruxelles
