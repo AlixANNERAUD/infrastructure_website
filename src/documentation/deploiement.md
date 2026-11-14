@@ -102,7 +102,8 @@ Chaque image Docker est figée sur une version exacte : jamais `latest`, jamais 
 - Il est privé : accessible uniquement depuis le réseau local ou le VPN. La connexion passe par [Zitadel](architecture.md#authentification) ; son compte administrateur local reste en secours, puisque Semaphore déploie Zitadel lui-même.
 - Il clone le dépôt public, et le sous-module des secrets avec un accès en lecture seule limité à ce seul dépôt.
 - Il se connecte aux hôtes avec sa propre clé SSH, autorisée sur le compte d’automatisation comme celle de l’ordinateur portable.
-- Chaque playbook a deux modèles de tâche : un aperçu (`--check --diff`) et une exécution, lancés à la main.
+- Chaque playbook a deux modèles de tâche : un aperçu (`--check --diff`) et une exécution. Ils sont générés à partir des playbooks du dépôt, rangés en trois vues (services, hôtes, DNS) ; les playbooks qui ont besoin d’OpenTofu ou de l’ordinateur portable n’en ont pas.
+- Chaque nuit, l’aperçu de `site.yml` montre ce qui a dérivé du dépôt (une application TrueNAS modifiée à la main, un réseau perdu…) : son résultat se lit dans l’historique de Semaphore.
 - Le provisionnement de Zitadel (OpenTofu) reste lancé depuis l’ordinateur portable : Semaphore n’a pas OpenTofu, ses exécutions gardent les applications existantes.
 - Il exécute l’ansible-core de son image, qui peut différer de celui de l’intégration continue : le premier aperçu montre les écarts.
 
@@ -115,19 +116,22 @@ Chaque image Docker est figée sur une version exacte : jamais `latest`, jamais 
 | `deploiement_admin_login`, `deploiement_admin_name`, `deploiement_admin_email`, `deploiement_admin_password` | Compte administrateur local, créé au premier démarrage seulement : le changer ensuite se fait dans l’interface                                                  |
 | `deploiement_access_key_encryption`                                                                          | Clé de chiffrement des clés stockées dans Semaphore (`openssl rand -base64 32`) : la perdre les rend illisibles                                                 |
 | `deploiement_vault_repository_token`                                                                         | Jeton GitHub _fine-grained_ limité au dépôt des secrets, en lecture seule (**Contents: Read-only**), avec une date d’expiration et un rappel pour le renouveler |
+| `deploiement_state_passphrase`                                                                               | Phrase de passe de l’état chiffré de la configuration de Semaphore (`openssl rand -base64 32`)                                                                  |
 
 Une fois, pour autoriser Semaphore sur les hôtes :
 
 1. Ajouter la clé publique affichée à `automation_additional_public_keys`, puis lancer `mise deploy hosts/bootstrap.yml`.
 2. Sur TrueNAS, ajouter la même clé aux clés autorisées du compte `ansible` (le playbook affiche les lignes exactes). Si le réseau `proxy-deploiement` de Bruxelles est un jour recréé, relancer `mise deploy hosts/bootstrap.yml --limit bruxelles` et mettre à jour cette ligne.
 
-Une fois, dans l’interface de Semaphore :
+Le projet de Semaphore n’est pas configuré dans son interface : <RepositoryReference path="services/deploiement/semaphore.tf" /> le décrit (clés, dépôt, inventaire, modèles de tâche et aperçu nocturne), et OpenTofu l’applique depuis l’ordinateur portable, par le VPN :
 
-1. Créer le projet `Infrastructure`.
-2. Dans le magasin de clés : `ansible` (type SSH, utilisateur `ansible`, contenu de `keys/ansible`, lu sur Bruxelles), `vault` (identifiant vide et mot de passe du coffre Ansible) et `none` (type aucun, pour cloner le dépôt public).
-3. Dépôt : `https://github.com/AlixANNERAUD/Infrastructure.git`, branche `main`, clé `none`. Le sous-module des secrets est cloné avec le jeton en lecture seule que le déploiement donne à Git dans le conteneur.
-4. Inventaire : type fichier, chemin `inventory/hosts.yml`, clé `ansible`.
-5. Modèles de tâche, pour `site.yml` et chaque `services/<service>/deploy.yml`, en deux variantes avec le mot de passe `vault` : aperçu (`["--check", "--diff"]`) et exécution.
+```bash
+mise deploy services/deploiement/configuration.yml
+```
+
+Le playbook se connecte avec le compte administrateur local, crée un jeton d’API pour la durée de l’exécution puis l’expire. Il lit la clé SSH de Semaphore sur Bruxelles, et donne à Semaphore le mot de passe du coffre avec lequel il s’exécute lui-même. L’état d’OpenTofu est chiffré dans `vault/deploiement/opentofu.tfstate`. Il faut relancer le playbook quand un playbook est ajouté ou retiré du dépôt.
+
+Semaphore détient donc le mot de passe du coffre : qui en prend le contrôle peut lire tous les secrets et déployer. Il reste joignable par le réseau local et le VPN seulement, derrière Zitadel et son second facteur obligatoire.
 
 Semaphore trouve un compte par son adresse et refuse une connexion Zitadel dont l’adresse appartient à un compte local : avant la première connexion Zitadel, donner une autre adresse à l’administrateur local, puis promouvoir le compte que Zitadel crée.
 
