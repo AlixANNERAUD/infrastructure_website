@@ -57,6 +57,19 @@ mise deploy services/maillage/configuration.yml
 
 Le coffre `vault/maillage/vault.yml` contient le jeton d’un utilisateur de service NetBird administrateur (`netbird_automation_token`) et la phrase de passe de l’état chiffré d’OpenTofu (`netbird_state_passphrase`) ; l’état lui-même est dans `vault/maillage/opentofu.tfstate`.
 
+#### Nœud de sortie par Proton VPN {#sortie-vpn}
+
+Un appareil du VPN peut faire sortir tout son trafic par Proton VPN, à la demande : il choisit le nœud de sortie « Exit Node (Proton VPN) » dans le menu de son client NetBird, et le décoche ensuite. Ce nœud n’est jamais appliqué de lui-même.
+
+- **Fonctionnement :** sur Luxembourg, <RepositoryReference path="services/sortie" /> fait tourner [Gluetun](https://github.com/qdm12/gluetun) en WireGuard vers Proton VPN, et un client NetBird qui partage son réseau. Le trafic des appareils entre par NetBird et ressort par le tunnel de Proton. Le pare-feu de Gluetun bloque tout ce qui ne passe pas par le tunnel : si le VPN tombe, le trafic s’arrête au lieu de sortir avec l’adresse de Luxembourg.
+- **Clés :** `vault/sortie/vault.yml` contient la clé privée d’une configuration WireGuard de Proton (`sortie_wireguard_private_key`, plateforme GNU/Linux, Moderate NAT pour les connexions directes, sans NAT-PMP) et la clé d’installation NetBird du nœud (`sortie_netbird_setup_key`), que `services/maillage/configuration.yml` écrit dans `~/.config/infrastructure/netbird/sortie.setup-key`. La configuration WireGuard de Proton est valable un an : elle se prolonge depuis le compte Proton, sans changer de clé.
+- **Limites :** seul l’IPv4 passe par le nœud ; l’IPv6 et le DNS de l’appareil peuvent sortir en direct, ce qu’un test de fuite (par exemple [ipleak.net](https://ipleak.net/)) permet de vérifier.
+
+```bash
+mise deploy services/maillage/configuration.yml   # groupe, clé d’installation et route
+mise deploy services/sortie/deploy.yml
+```
+
 ### 💬 Fédération Matrix {#matrix}
 
 Le serveur Matrix (Synapse) de `anneraud.fr` tourne sur Bruxelles. Les identifiants sont de la forme `@nom:anneraud.fr` : le domaine nu `anneraud.fr` publie la délégation Matrix (`/.well-known/matrix`) et transmet les requêtes de fédération à Synapse, sur le port 443 ; le reste du domaine nu redirige vers `www.anneraud.fr`. L’API d’administration de Synapse n’est accessible que depuis le réseau local ou le VPN.
