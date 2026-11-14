@@ -34,11 +34,11 @@ Ajouter un service au dépôt, c’est lui ajouter une ligne ici et une vérific
 | Service                                               | Rôle                                | Accès  | Hôte      | Déploiement  |
 | ----------------------------------------------------- | ----------------------------------- | ------ | --------- | ------------ |
 | [Médiathèque](https://mediatheque.anneraud.fr/)       | Films, séries et musique (Jellyfin) | Public | Bruxelles | TrueNAS Apps |
-| [Jellyseerr](https://jellyseerr.anneraud.fr/)         | Demandes de films et de séries      | Privé  | Bruxelles | TrueNAS Apps |
-| [Radarr](https://radarr.anneraud.fr/)                 | Collection de films                 | Privé  | Bruxelles | TrueNAS Apps |
-| [Sonarr](https://sonarr.anneraud.fr/)                 | Collection de séries                | Privé  | Bruxelles | TrueNAS Apps |
-| [Prowlarr](https://prowlarr.anneraud.fr/)             | Indexeurs                           | Privé  | Bruxelles | TrueNAS Apps |
-| [Bazarr](https://bazarr.anneraud.fr/)                 | Sous-titres                         | Privé  | Bruxelles | TrueNAS Apps |
+| [Jellyseerr](https://jellyseerr.anneraud.fr/)         | Demandes de films et de séries      | Privé  | Bruxelles | Ansible      |
+| [Radarr](https://radarr.anneraud.fr/)                 | Collection de films                 | Privé  | Bruxelles | Ansible      |
+| [Sonarr](https://sonarr.anneraud.fr/)                 | Collection de séries                | Privé  | Bruxelles | Ansible      |
+| [Prowlarr](https://prowlarr.anneraud.fr/)             | Indexeurs                           | Privé  | Bruxelles | Ansible      |
+| [Bazarr](https://bazarr.anneraud.fr/)                 | Sous-titres                         | Privé  | Bruxelles | Ansible      |
 | [Téléchargement](https://telechargement.anneraud.fr/) | Téléchargements (qBittorrent)       | Privé  | Bruxelles | Ansible      |
 | [MeTube](https://metube.anneraud.fr/)                 | Téléchargement de vidéos            | Privé  | Bruxelles | TrueNAS Apps |
 
