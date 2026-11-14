@@ -131,7 +131,7 @@ mise deploy services/deploiement/configuration.yml
 
 Le playbook se connecte avec le compte administrateur local, crée un jeton d’API pour la durée de l’exécution puis l’expire. Il lit la clé SSH de Semaphore sur Bruxelles, et donne à Semaphore le mot de passe du coffre avec lequel il s’exécute lui-même. L’état d’OpenTofu est chiffré dans `vault/deploiement/opentofu.tfstate`. Il faut relancer le playbook quand un playbook est ajouté ou retiré du dépôt.
 
-Semaphore détient donc le mot de passe du coffre : qui en prend le contrôle peut lire tous les secrets et déployer. Il reste joignable par le réseau local et le VPN seulement, derrière Zitadel et son second facteur obligatoire.
+Semaphore détient donc le mot de passe du coffre : qui en prend le contrôle peut lire tous les secrets et déployer. Il reste joignable par le réseau local et le VPN seulement, derrière Zitadel : un compte qui s’y connecte pour la première fois n’est membre d’aucun projet et ne voit rien, et le compte qui administre Semaphore a son second facteur.
 
 Semaphore trouve un compte par son adresse et refuse une connexion Zitadel dont l’adresse appartient à un compte local : avant la première connexion Zitadel, donner une autre adresse à l’administrateur local, puis promouvoir le compte que Zitadel crée.
 

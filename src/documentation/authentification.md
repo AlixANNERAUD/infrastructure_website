@@ -13,8 +13,6 @@ Cette page explique comment l’organisation Zitadel est décrite et provisionn�
 
 Les réglages par défaut de l’instance ne sont pas gérés : l’administrateur de l’organisation ZITADEL reste un accès de secours, quoi que fasse le code.
 
-Le second facteur est obligatoire pour tous les comptes de l’organisation : une application d’authentification (TOTP), une clé de sécurité ou une clé d’accès (passkey). Un compte Zitadel ouvre en effet NetBird, et le VPN fait partie des réseaux de confiance de toutes les routes internes. Un compte sans second facteur le configure à sa connexion suivante.
-
 L’ensemble s’applique avec `mise deploy services/authentification/applications.yml` ; les déploiements qui ont besoin d’une application (Vigie, MCPHub, Semaphore…) l’appliquent aussi. L’état d’OpenTofu est chiffré dans le coffre (`vault/authentification/opentofu.tfstate`) : après chaque changement, il faut le valider dans le dépôt des secrets, puis mettre à jour le sous-module.
 
 ## 🗝️ Secrets {#secrets}
