@@ -98,6 +98,81 @@ Luxembourg est filtré à deux niveaux : la liste de sécurité d’Oracle, deva
 - **La liste de sécurité d’Oracle :** décrite dans <RepositoryReference path="opentofu/oracle" /> et appliquée depuis le poste de contrôle (<RepositoryReference path="hosts/luxembourg/oracle.yml" />), jamais modifiée dans la console : OpenTofu possède toutes ses règles et retire au passage suivant ce qui aurait été ajouté à la main. Elle est construite à partir de la même liste de ports que les règles de l’hôte (`host_firewall_public_ports`) : un port publié par un conteneur s’ouvre une fois, pour les deux pare-feu, en IPv4 et en IPv6. SSH n’y figure pas.
 - **Un utilisateur Oracle dédié :** OpenTofu agit avec l’utilisateur `opentofu-reseau`, sans mot de passe ni accès à la console, dont le groupe ne peut que lire le réseau et gérer ses listes de sécurité. Sa clé d’API et la phrase de passe de l’état chiffré sont dans `vault/oracle/vault.yml`, l’état dans `vault/oracle/opentofu.tfstate`.
 
+### 🔐 Clé d’API d’Oracle {#cle-oracle}
+
+Le CLI d’Oracle est installé avec les autres outils (`uv sync`) et se lance par `mise oracle`. Les commandes d’administration passent par une session temporaire, ouverte dans le navigateur avec le compte propriétaire, qui expire au bout d’une heure ; la clé d’API, elle, ne sert qu’à OpenTofu et ne vit que dans le coffre.
+
+**Session d’administration**, avant chacune des procédures ci-dessous :
+
+```bash
+mise oracle session authenticate --profile-name ADMIN --region eu-frankfurt-1
+export OCI_CLI_PROFILE=ADMIN OCI_CLI_AUTH=security_token
+read_profile() { awk -F= -v key="$1" '/^\[/{inside=($0=="[ADMIN]")} inside && $1==key {print $2}' ~/.oci/config; }
+TENANCY=$(read_profile tenancy)
+```
+
+**Créer l’utilisateur** (une seule fois) : un utilisateur sans mot de passe ni console, et un groupe qui ne peut que lire le réseau et gérer ses listes de sécurité.
+
+```bash
+USER_ID=$(mise oracle iam user create --name opentofu-reseau \
+  --description "OpenTofu : pare-feu réseau de Luxembourg" --query data.id --raw-output)
+mise oracle iam user update-user-capabilities --user-id "$USER_ID" \
+  --can-use-api-keys true --can-use-console-password false --can-use-auth-tokens false \
+  --can-use-customer-secret-keys false --can-use-smtp-credentials false
+GROUP_ID=$(mise oracle iam group create --name OpenTofu-Reseau \
+  --description "Gestion du pare-feu réseau par OpenTofu" --query data.id --raw-output)
+mise oracle iam group add-user --group-id "$GROUP_ID" --user-id "$USER_ID"
+mise oracle iam policy create --compartment-id "$TENANCY" --name opentofu-reseau \
+  --description "Pare-feu réseau géré par OpenTofu" --statements '[
+  "Allow group OpenTofu-Reseau to read virtual-network-family in tenancy",
+  "Allow group OpenTofu-Reseau to manage security-lists in tenancy",
+  "Allow group OpenTofu-Reseau to manage network-security-groups in tenancy",
+  "Allow group OpenTofu-Reseau to use vnics in tenancy",
+  "Allow group OpenTofu-Reseau to read instance-family in tenancy"]'
+```
+
+**Provisionner une clé** (première fois, ou rotation) : la clé est générée sur le poste, au format PKCS#1 qu’attend le fournisseur d’OpenTofu (`-traditional` : une clé « BEGIN PRIVATE KEY » est refusée avec une erreur 401), et seule sa partie publique part chez Oracle. Oracle met une minute environ à la reconnaître.
+
+```bash
+USER_ID=$(mise oracle iam user list --name opentofu-reseau --query 'data[0].id' --raw-output)
+(umask 077; openssl genrsa -traditional -out /tmp/oracle.pem 4096)
+openssl rsa -in /tmp/oracle.pem -pubout -out /tmp/oracle.public.pem
+FINGERPRINT=$(mise oracle iam user api-key upload --user-id "$USER_ID" \
+  --key-file /tmp/oracle.public.pem --query data.fingerprint --raw-output)
+```
+
+Puis le coffre : à la création, d’un coup et chiffré aussitôt ; pour une rotation, seuls `oracle_private_key` et `oracle_fingerprint` changent (`mise vault vault/oracle/vault.yml`).
+
+```bash
+mkdir -p vault/oracle
+(
+  umask 077
+  {
+    echo "oracle_tenancy_ocid: $TENANCY"
+    echo "oracle_user_ocid: $USER_ID"
+    echo "oracle_fingerprint: \"$FINGERPRINT\""
+    echo "oracle_region: eu-frankfurt-1"
+    echo "oracle_state_passphrase: \"$(openssl rand -base64 32)\""
+    echo "oracle_private_key: |"
+    sed 's/^/  /' /tmp/oracle.pem
+  } > vault/oracle/vault.yml
+)
+mise exec -- uv run ansible-vault encrypt vault/oracle/vault.yml
+head -1 vault/oracle/vault.yml    # $ANSIBLE_VAULT;1.1;AES256, sinon le fichier est resté en clair
+rm -f /tmp/oracle.pem /tmp/oracle.public.pem
+```
+
+`mise deploy hosts/luxembourg/oracle.yml` vérifie ensuite la clé : il ne doit rien changer à la liste. Le coffre et l’état se poussent comme tout changement de secret (voir [Secrets](#secrets)).
+
+**Retirer une clé**, après une rotation ou si un poste est perdu : Oracle garde au plus trois clés par utilisateur.
+
+```bash
+mise oracle iam user api-key list --user-id "$USER_ID" --query 'data[].fingerprint'
+mise oracle iam user api-key delete --user-id "$USER_ID" --fingerprint <empreinte> --force
+```
+
+Une clé copiée hors du coffre (dans `~/.oci/` pour essayer le CLI, par exemple) s’efface du poste une fois le coffre à jour : le playbook ne lit que le coffre.
+
 ## 🗝️ Secrets {#secrets}
 
 - **Hors du dépôt public :** mots de passe, jetons et clés d’API sont dans un sous-module Git privé, chiffrés avec [Ansible Vault](https://docs.ansible.com/ansible/latest/vault_guide/index.html).
