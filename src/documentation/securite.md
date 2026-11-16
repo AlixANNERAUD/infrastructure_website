@@ -95,6 +95,8 @@ Luxembourg est filtré à deux niveaux : la liste de sécurité d’Oracle, deva
 - **Les règles d’Oracle :** seul `root` joint les volumes iSCSI (`169.254.0.2` et `169.254.2.0/24`, port 3260), comme dans les images d’Oracle. Les conteneurs et les pairs du VPN ne joignent ni ces volumes ni les métadonnées de l’instance.
 - **Sans se couper l’accès :** le playbook ne s’exécute que par le VPN. Avant un changement, il sauvegarde les règles en place et programme leur retour dix minutes plus tard ; il n’annule ce retour qu’après s’être reconnecté par le VPN et avoir joint le HTTPS public.
 - **Ports publiés par Docker :** ils ne passent pas par la chaîne d’entrée de l’hôte, c’est donc la liste de sécurité d’Oracle qui les filtre.
+- **La liste de sécurité d’Oracle :** décrite dans <RepositoryReference path="opentofu/oracle" /> et appliquée depuis le poste de contrôle (<RepositoryReference path="hosts/luxembourg/oracle.yml" />), jamais modifiée dans la console : OpenTofu possède toutes ses règles et retire au passage suivant ce qui aurait été ajouté à la main. Elle est construite à partir de la même liste de ports que les règles de l’hôte (`host_firewall_public_ports`) : un port publié par un conteneur s’ouvre une fois, pour les deux pare-feu, en IPv4 et en IPv6. SSH n’y figure pas.
+- **Un utilisateur Oracle dédié :** OpenTofu agit avec l’utilisateur `opentofu-reseau`, sans mot de passe ni accès à la console, dont le groupe ne peut que lire le réseau et gérer ses listes de sécurité. Sa clé d’API et la phrase de passe de l’état chiffré sont dans `vault/oracle/vault.yml`, l’état dans `vault/oracle/opentofu.tfstate`.
 
 ## 🗝️ Secrets {#secrets}
 
