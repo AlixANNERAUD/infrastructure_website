@@ -81,9 +81,20 @@ Sur les services publics, les formulaires de connexion sont limités par adresse
 
 - **Compte d’automatisation dédié :** Ansible se connecte avec un compte réservé, distinct des comptes personnels, par clé SSH uniquement. Son mot de passe est verrouillé ; il dispose de `sudo` sans mot de passe pour les déploiements.
 - **Clés restreintes :** chaque clé autorisée sur ce compte n’est acceptée que depuis les réseaux privés de l’infrastructure, et aucune autre clé n’est conservée. Le playbook qui le configure refuse de s’exécuter depuis une connexion qui ne viendrait pas de ces réseaux, pour ne jamais se couper l’accès.
-- **`sshd` durci :** pas d’authentification par mot de passe, pas de connexion `root`, et seuls le compte d’automatisation et une courte liste de comptes nommés peuvent se connecter.
+- **`sshd` durci :** pas d’authentification par mot de passe, pas de connexion `root`, et seuls le compte d’automatisation et une courte liste de comptes nommés peuvent se connecter. Ces administrateurs se connectent avec leur propre clé et ont `sudo` sans mot de passe : la clé est déjà exigée, et un mot de passe en plus n’incitait qu’à se connecter en `root`. Le playbook vérifie que chacun a un compte et une clé avant de fermer `root`.
+- **Luxembourg par le VPN seulement :** son SSH n’est pas joignable depuis Internet ; la console série d’Oracle sert d’accès de secours si NetBird tombe.
 - **Un compte par usage :** les machines qui doivent se joindre ont leur propre compte et leur propre clé, jamais le compte d’automatisation. Par exemple, pour la réplication, chaque client ne peut lancer, par une commande forcée, que sa propre tâche de réplication sur Bruxelles ; la clé d’API de TrueNAS ne quitte jamais Bruxelles.
 - **TrueNAS :** ses utilisateurs et son serveur SSH se règlent dans son interface. Ansible n’y change rien mais vérifie les réglages (clés et restrictions, connexion par mot de passe désactivée) et indique les corrections à faire.
+
+## 🧱 Pare-feu de Luxembourg {#pare-feu-luxembourg}
+
+Luxembourg est filtré à deux niveaux : la liste de sécurité d’Oracle, devant la machine, et iptables sur la machine (<RepositoryReference path="hosts/luxembourg/firewall.yml" />).
+
+- **Sans ufw :** Oracle déconseille ufw sur ses instances Ubuntu, qui peuvent ne plus démarrer. Le playbook charge ses propres chaînes avec `iptables-restore --noflush`, au démarrage par un service systemd et à chaque changement : les règles de Docker et de NetBird ne sont jamais touchées.
+- **Ce qui entre sur l’hôte :** le VPN, les réponses aux connexions sortantes, l’ICMP, le DHCP d’Oracle, les ports publiés par les conteneurs et Cockpit depuis les réseaux Docker ; tout le reste est rejeté, SSH public compris. La liste est dans <RepositoryReference path="inventory/host_vars/luxembourg.yml" />.
+- **Les règles d’Oracle :** seul `root` joint les volumes iSCSI (`169.254.0.2` et `169.254.2.0/24`, port 3260), comme dans les images d’Oracle. Les conteneurs et les pairs du VPN ne joignent ni ces volumes ni les métadonnées de l’instance.
+- **Sans se couper l’accès :** le playbook ne s’exécute que par le VPN. Avant un changement, il sauvegarde les règles en place et programme leur retour dix minutes plus tard ; il n’annule ce retour qu’après s’être reconnecté par le VPN et avoir joint le HTTPS public.
+- **Ports publiés par Docker :** ils ne passent pas par la chaîne d’entrée de l’hôte, c’est donc la liste de sécurité d’Oracle qui les filtre.
 
 ## 🗝️ Secrets {#secrets}
 
