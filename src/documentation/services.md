@@ -16,6 +16,7 @@ Ajouter un service au dépôt, c’est lui ajouter une ligne ici et une vérific
 | [Bichon](https://archive-courriel.anneraud.fr/)                 | Archive des courriels                         | Privé  | Bruxelles  | TrueNAS Apps |
 | [Maison](https://maison.anneraud.fr/)                           | Domotique (Home Assistant, relevés Linky)     | Public | Bruxelles  | Ansible      |
 | [Matrix](https://matrix.anneraud.fr/)                           | Messagerie (Synapse, `@nom:anneraud.fr`)      | Public | Bruxelles  | Ansible      |
+| Appels                                                          | Appels audio et vidéo de Matrix (LiveKit)     | Public | Luxembourg | Ansible      |
 | [Notes](https://notes.anneraud.fr/)                             | Documentation partagée (Docmost)              | Public | Bruxelles  | Ansible      |
 | [Recettes](https://recettes.anneraud.fr/)                       | Recettes de cuisine (Mealie)                  | Privé  | Bruxelles  | TrueNAS Apps |
 | [Finances](https://finances.anneraud.fr/)                       | Finances personnelles (Firefly III)           | Privé  | Bruxelles  | TrueNAS Apps |

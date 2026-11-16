@@ -61,6 +61,15 @@ Le coffre `vault/maillage/vault.yml` contient le jeton d’un utilisateur de ser
 
 Le serveur Matrix (Synapse) de `anneraud.fr` tourne sur Bruxelles. Les identifiants sont de la forme `@nom:anneraud.fr` : le domaine nu `anneraud.fr` publie la délégation Matrix (`/.well-known/matrix`) et transmet les requêtes de fédération à Synapse, sur le port 443 ; le reste du domaine nu redirige vers `www.anneraud.fr`. L’API d’administration de Synapse n’est accessible que depuis le réseau local ou le VPN.
 
+#### 📞 Appels {#appels}
+
+Les appels des deux serveurs Matrix (`anneraud.fr` et `dera.page`) passent par Luxembourg, pour son adresse publique (<RepositoryReference path="services/appels" />) :
+
+- **Element Call** (Element X, appels de groupe) : chaque participant envoie son audio et sa vidéo une seule fois à [LiveKit](https://livekit.io/), qui les relaie aux autres. Les clients le trouvent par `/_matrix/client/v1/rtc/transports`, que Synapse sert d’après `matrix_rtc` ; `lk-jwt-service` leur donne l’accès après avoir vérifié leur compte auprès de leur serveur. Seuls les utilisateurs des deux serveurs peuvent lancer un appel ; ceux d’autres serveurs peuvent rejoindre un appel en cours. Le média reste chiffré de bout en bout.
+- **Anciens appels à deux** (Element Web, ancien Element mobile) : les deux appareils se connectent directement, et passent par le relais TURN (coturn) quand un réseau l’empêche. Synapse donne aux clients des identifiants temporaires, tirés d’un secret partagé avec coturn.
+
+L’adresse `appels.anneraud.fr` porte la signalisation (derrière Traefik) et les ports média, publiés directement : TCP 7881 et UDP 7882 pour LiveKit, TCP et UDP 3479 et UDP 49160 à 49200 pour coturn (le port TURN habituel, 3478, est pris par NetBird). Ils s’ouvrent dans la liste de sécurité d’Oracle et sur l’hôte depuis la liste des ports publics de Luxembourg (voir [Sécurité](securite.md#pare-feu-luxembourg)).
+
 ## 🪪 Authentification unique {#authentification}
 
 [Zitadel](https://zitadel.com/), à l’adresse [authentification.anneraud.fr](https://authentification.anneraud.fr/), est le fournisseur d’identité de l’infrastructure. Les services s’y raccordent en OpenID Connect (OIDC) : l’utilisateur se connecte une fois sur Zitadel, puis accède aux services qui lui sont ouverts.
