@@ -11,4 +11,4 @@
 
 ### 💾 Sauvegardes et dépôts {#sauvegardes}
 
-1. **Miroirs GitHub automatiques dans Gitea :** chaque dépôt (hors forks) des comptes `AlixANNERAUD` et `xila-project` est copié dans Gitea et resynchronisé, les nouveaux dépôts compris, décrits avec OpenTofu.
+1. **Miroirs GitHub automatiques dans Gitea :** chaque dépôt (hors forks) des comptes `AlixANNERAUD`, `xila-project` et `MiniTrainStore` est copié dans Gitea et resynchronisé, les nouveaux dépôts compris, décrits avec OpenTofu.
