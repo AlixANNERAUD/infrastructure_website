@@ -87,6 +87,14 @@ Une vérification unique, exigée par les règles de la branche `main`, attend l
 
 Chaque image Docker est figée sur une version exacte : jamais `latest`, jamais d’image sans étiquette. [Dependabot](https://docs.github.com/fr/code-security/dependabot) ouvre chaque lundi une pull request groupée par écosystème (images Docker Compose, actions GitHub, outils Python). Elle passe par les mêmes vérifications que tout autre changement. Les collections Ansible, la version de Python et l’extension CrowdSec de Traefik, que Dependabot ne suit pas, sont mises à jour à la main.
 
+Dependabot change les versions, mais ne signale pas une faille dans une image déjà déployée. Pour cela, à chaque changement sur `main` d’un `compose.yml`, de `uv.lock` ou des workflows, le workflow `SBOM` envoie la liste des composants (SBOM) à l’[outil de suivi des vulnérabilités](https://vulnerabilites.anneraud.fr/), dans l’organisation `alix_anneraud`, avec un projet par type de dépendance :
+
+- **`infrastructure-docker` :** toutes les images des `compose.yml`. Chaque image y apparaît comme une dépendance du projet, et ses paquets comme ses propres dépendances : une faille indique par quelle image elle arrive. Le résumé du job liste les conteneurs de chaque image. Les images privées de la boutique en sont exclues : c’est à leur propre dépôt d’envoyer leur SBOM.
+- **`infrastructure-python` :** les outils Python de `uv.lock` (Ansible, ansible-lint…).
+- **`infrastructure-actions` :** les actions GitHub des workflows.
+
+L’outil revérifie chaque nuit tous les SBOM auprès d’[OSV](https://osv.dev/). Chaque projet a son propre jeton d’envoi, rangé dans les secrets du dépôt (`NANOBOM_TOKEN_DOCKER`, `NANOBOM_TOKEN_PYTHON`, `NANOBOM_TOKEN_ACTIONS`).
+
 ## 🛡️ Principes de sécurité du déploiement {#principes}
 
 - **Branche protégée :** `main` n’accepte que des pull requests dont l’intégration continue est passée, fusionnées en un seul commit.
