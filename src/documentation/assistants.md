@@ -130,3 +130,50 @@ Le serveur se branche ensuite dans l’interface de MCPHub, pas dans le dépôt 
 2. **Servers > Add** : type Streamable HTTP, adresse `https://mcp.test.minitrainstore.fr/mcp/admin`, sans en-tête. MCPHub découvre l’OAuth, s’enregistre seul (enregistrement dynamique) et utilise PKCE : rien d’autre à remplir. Garder le serveur privé.
 3. **Connect** : le navigateur s’ouvre sur la page de consentement, `https://mcp.test.minitrainstore.fr/dashboard/mcp/authorize`. S’y connecter avec le compte de l’agent (dans une fenêtre privée si une autre session du Dashboard est ouverte), puis approuver la demande.
 4. N’activer que les outils utiles.
+
+### 📦 Importer les données de test {#boutique-import}
+
+Pour essayer le site de test avec le catalogue du poste de développement (annonces, photos, commandes et factures de test), on remplace sa base et ses fichiers par ceux du poste. Ce qui était sur le site de test est perdu, y compris le compte de l’agent et sa connexion à MCPHub : ils se recréent ensuite. L’image déployée doit avoir les mêmes migrations que le poste (le même commit, de préférence).
+
+La base du poste contient des clients et leurs adresses : les fichiers d’import ne se partagent pas et se suppriment une fois l’import fait, et le site de test reste privé.
+
+Sur le poste, depuis le dépôt de la boutique (serveur Vendure local arrêté, base locale démarrée) :
+
+```bash
+docker exec mts-vendure-db pg_dump -U vendure -d vendure --format=custom --no-owner --no-privileges > boutique.dump
+tar -C server/static -cf boutique-fichiers.tar assets assets-originals invoices/generated labels
+scp boutique.dump boutique-fichiers.tar <utilisateur>@local.bruxelles.anneraud.fr:
+```
+
+Sur Bruxelles, dans le dossier de la boutique :
+
+```bash
+cd /mnt/Donnees/Applications_chiffrees/Boutique
+sudo docker compose stop server worker storefront
+
+# La base : vidée, puis remplacée par celle du poste
+sudo docker compose exec -T postgres dropdb -U boutique --force boutique
+sudo docker compose exec -T postgres createdb -U boutique boutique
+sudo docker compose exec -T postgres pg_restore -U boutique -d boutique --no-owner --no-privileges --exit-on-error < ~/boutique.dump
+
+# Sessions et connexions MCP du poste : inutilisables ici (autre secret), on les efface
+sudo docker compose exec -T postgres psql -U boutique -d boutique -c "TRUNCATE mcp_authorization_code, mcp_authorization_request, mcp_tool_call_log, mcp_oauth_grant, mcp_oauth_client, session, api_key CASCADE;"
+
+# Les photos, leurs originaux, les factures et les étiquettes, rendus à l’utilisateur node (1000)
+sudo find Assets Assets_originals Invoices Labels -mindepth 1 -delete
+sudo tar -xf ~/boutique-fichiers.tar --transform 's,^assets-originals,Assets_originals,;s,^assets,Assets,;s,^invoices/generated,Invoices,;s,^labels,Labels,'
+sudo chown -R 1000:1000 Assets Assets_originals Invoices Labels
+
+sudo docker compose up -d
+sudo docker compose --profile seed run --rm seed
+rm ~/boutique.dump ~/boutique-fichiers.tar
+```
+
+Puis :
+
+1. **Compte SuperAdmin :** la base importée garde les comptes du poste. Se connecter au Dashboard avec le mot de passe SuperAdmin du poste (`server/.env`), puis le remplacer par `boutique_superadmin_password` (**Profil**).
+2. **Agent :** recréer son compte (étape 3 de la mise en place) et le reconnecter dans MCPHub (**Connect**).
+3. **Vérifier :** l’accueil, une fiche produit avec ses photos et, dans le Dashboard, la liste des commandes.
+4. Supprimer aussi `boutique.dump` et `boutique-fichiers.tar` du poste.
+
+Les e-mails restent coupés tant que `SMTP_HOST` est vide : l’import n’écrit à aucun client.
