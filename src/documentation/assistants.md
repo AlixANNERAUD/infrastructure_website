@@ -7,6 +7,7 @@ flowchart LR
 	Postes[Assistants des postes de travail] --"OAuth"--> MCPHub
 	subgraph Bruxelles
 		MCPHub --> Paperless[Paperless]
+		MCPHub --"OAuth"--> Boutique[Serveur MCP de la boutique]
 		MCPHub --> Autres[Autres serveurs MCP]
 	end
 	subgraph Luxembourg
@@ -98,3 +99,81 @@ Mise en place, une fois :
 2. `mise vault vault/vigie/vault.yml` : `vigie_mcp_grafana_token` (ce jeton) et `vigie_mcp_server_token` (`openssl rand -hex 32`), puis valider le coffre et son sous-module.
 3. `mise deploy services/vigie/deploy.yml` : le conteneur `mcp` démarre.
 4. Dans MCPHub (**Servers → Add**) : type Streamable HTTP, adresse `https://vigie.anneraud.fr/mcp`, en-tête `Authorization` = `Bearer <vigie_mcp_server_token>`. Tout utilisateur de MCPHub qui reçoit ce serveur voit toutes les métriques de Vigie : il reste dans le groupe du propriétaire.
+
+## 🚂 Boutique Mini Train Store {#boutique}
+
+La boutique Mini Train Store (<RepositoryReference path="services/boutique" />, [Vendure](https://vendure.io/)) tourne sur Bruxelles, pour l’instant sur un site de test privé, `test.minitrainstore.fr`. Son serveur Vendure contient un serveur MCP (`/mcp/admin`) : il donne à l’agent les outils de gestion de la boutique (annonces, commandes à expédier, clients en lecture), sans conteneur de plus. Les outils et leurs garde-fous sont décrits dans le dépôt de la boutique (`docs/conception/12-mcp.md`).
+
+- **Adresse à part :** le serveur MCP et son OAuth ne sont servis qu’à l’adresse `mcp.test.minitrainstore.fr`, accessible uniquement depuis le réseau local ou le VPN. Elle mène au serveur Vendure entier : c’est l’émetteur OAuth (ses `/.well-known/…` y sont), et la page de consentement du Dashboard s’y ouvre. Sur `test.minitrainstore.fr`, `/mcp` et `/.well-known/oauth-*` ne mènent jamais au serveur ; la CI le vérifie.
+- **MCPHub :** il tourne sur le même hôte et rejoint cette adresse en repassant par Traefik, qui le voit alors arriver d’une adresse Docker (`172.16.0.0/12`), refusée par la liste d’accès interne. Une seconde route, réservée à ces adresses, le laisse passer ; l’OAuth protège toujours le serveur MCP.
+- **Droits :** l’agent agit avec les droits du compte qui approuve la connexion. On approuve donc avec le compte dédié à l’agent (rôle « Agent LLM » : pas de suppression, pas de paramètres, pas d’étiquette Mondial Relay), jamais avec le compte SuperAdmin.
+- **Jetons :** MCPHub reçoit un jeton d’accès de 15 minutes, qu’il renouvelle seul. Les connexions se consultent et se révoquent dans le Dashboard (**Paramètres > MCP**). `MCP_OAUTH_TOKEN_SECRET` sert à hacher les jetons enregistrés : le changer déconnecte tous les agents.
+
+Le coffre `vault/boutique/vault.yml` (créé avec `mise vault:create`) contient :
+
+- `boutique_registry_username` et `boutique_registry_token` : un compte GitHub et un jeton classique avec le droit `read:packages`, car les images sont privées ;
+- `boutique_database_password` et `boutique_superadmin_password`, d’au moins 20 caractères ;
+- `boutique_cookie_secret`, `boutique_revalidation_secret` et `boutique_mcp_oauth_token_secret` (`openssl rand -base64 32` chacun) ;
+- `boutique_integrations`, facultatif : les réglages SMTP, Stripe, Turnstile, Mondial Relay et le compte « Vendeur », sous les noms des variables du serveur (`SMTP_HOST`, `STRIPE_SECRET_KEY`…).
+
+Les valeurs se limitent aux lettres, aux chiffres et à `._~:/+=@!,-`, car Compose interpréterait `$` et les guillemets.
+
+Mise en place, une fois :
+
+1. Remplir le coffre, puis `mise deploy services/boutique/deploy.yml`.
+2. Sur Bruxelles, dans le dossier de la boutique, créer la configuration initiale (pays, taxes, livraison, rôle « Agent LLM ») : `docker compose --profile seed run --rm seed`. Ajouter aussi la base `boutique` à l’outil de sauvegarde des bases.
+3. Dans le Dashboard (`https://test.minitrainstore.fr/dashboard`, compte SuperAdmin) : **Administrateurs > Nouveau**, un compte pour l’agent, avec son adresse et son mot de passe, et le rôle « Agent LLM ».
+
+Le serveur se branche ensuite dans l’interface de MCPHub, pas dans le dépôt :
+
+1. Se connecter à MCPHub avec un compte administrateur : MCPHub ne laisse joindre une adresse du réseau local qu’aux serveurs d’un administrateur. Vérifier que **Settings > Installation > Base URL** vaut `https://mcphub.anneraud.fr` : c’est l’adresse de retour de l’OAuth.
+2. **Servers > Add** : type Streamable HTTP, adresse `https://mcp.test.minitrainstore.fr/mcp/admin`, sans en-tête. MCPHub découvre l’OAuth, s’enregistre seul (enregistrement dynamique) et utilise PKCE : rien d’autre à remplir. Garder le serveur privé.
+3. **Connect** : le navigateur s’ouvre sur la page de consentement, `https://mcp.test.minitrainstore.fr/dashboard/mcp/authorize`. S’y connecter avec le compte de l’agent (dans une fenêtre privée si une autre session du Dashboard est ouverte), puis approuver la demande.
+4. N’activer que les outils utiles.
+
+### 📦 Importer les données de test {#boutique-import}
+
+Pour essayer le site de test avec le catalogue du poste de développement (annonces, photos, commandes et factures de test), on remplace sa base et ses fichiers par ceux du poste. Ce qui était sur le site de test est perdu, y compris le compte de l’agent et sa connexion à MCPHub : ils se recréent ensuite. L’image déployée doit avoir les mêmes migrations que le poste (le même commit, de préférence).
+
+La base du poste contient des clients et leurs adresses : les fichiers d’import ne se partagent pas et se suppriment une fois l’import fait, et le site de test reste privé.
+
+Sur le poste, depuis le dépôt de la boutique (serveur Vendure local arrêté, base locale démarrée) :
+
+```bash
+docker exec mts-vendure-db pg_dump -U vendure -d vendure --format=custom --no-owner --no-privileges > boutique.dump
+tar -C server/static -cf boutique-fichiers.tar assets assets-originals invoices/generated labels
+scp boutique.dump boutique-fichiers.tar <utilisateur>@local.bruxelles.anneraud.fr:
+```
+
+Sur Bruxelles, dans le dossier de la boutique :
+
+```bash
+cd /mnt/Donnees/Applications_chiffrees/Boutique
+sudo docker compose stop server worker storefront
+
+# La base : vidée, puis remplacée par celle du poste
+sudo docker compose exec -T postgres dropdb -U boutique --force boutique
+sudo docker compose exec -T postgres createdb -U boutique boutique
+sudo docker compose exec -T postgres pg_restore -U boutique -d boutique --no-owner --no-privileges --exit-on-error < ~/boutique.dump
+
+# Sessions et connexions MCP du poste : inutilisables ici (autre secret), on les efface
+sudo docker compose exec -T postgres psql -U boutique -d boutique -c "TRUNCATE mcp_authorization_code, mcp_authorization_request, mcp_tool_call_log, mcp_oauth_grant, mcp_oauth_client, session, api_key CASCADE;"
+
+# Les photos, leurs originaux, les factures et les étiquettes, rendus à l’utilisateur node (1000)
+sudo find Assets Assets_originals Invoices Labels -mindepth 1 -delete
+sudo tar -xf ~/boutique-fichiers.tar --transform 's,^assets-originals,Assets_originals,;s,^assets,Assets,;s,^invoices/generated,Invoices,;s,^labels,Labels,'
+sudo chown -R 1000:1000 Assets Assets_originals Invoices Labels
+
+sudo docker compose up -d
+sudo docker compose --profile seed run --rm seed
+rm ~/boutique.dump ~/boutique-fichiers.tar
+```
+
+Puis :
+
+1. **Compte SuperAdmin :** la base importée garde les comptes du poste. Se connecter au Dashboard avec le mot de passe SuperAdmin du poste (`server/.env`), puis le remplacer par `boutique_superadmin_password` (**Profil**).
+2. **Agent :** recréer son compte (étape 3 de la mise en place) et le reconnecter dans MCPHub (**Connect**).
+3. **Vérifier :** l’accueil, une fiche produit avec ses photos et, dans le Dashboard, la liste des commandes.
+4. Supprimer aussi `boutique.dump` et `boutique-fichiers.tar` du poste.
+
+Les e-mails restent coupés tant que `SMTP_HOST` est vide : l’import n’écrit à aucun client.
