@@ -46,7 +46,7 @@ Vigie réunit [VictoriaMetrics](https://victoriametrics.com/), qui collecte et s
 - **Gatus :** le résultat et la durée de chaque vérification des deux pages d’état, lus par le réseau interne des collecteurs de Luxembourg (`metriques`).
 - **Serveurs et conteneurs :** [node_exporter](https://github.com/prometheus/node_exporter) mesure le processeur, la mémoire, la charge, les systèmes de fichiers, le cache ZFS, l’état de chaque pool, les températures des capteurs (processeurs, NVMe), la synchronisation de l’horloge et les processus tués faute de mémoire ; [cAdvisor](https://github.com/google/cadvisor) mesure le processeur, la mémoire, le réseau et les lectures et écritures disque et l’heure de démarrage de chaque conteneur, regroupés par application, ainsi que le trafic réseau de l’hôte (node_exporter, dans son propre réseau Docker, ne voit pas celui de l’hôte). Les deux tournent en lecture seule, sans privilège.
 - **CrowdSec :** alertes, bannissements, lignes de journal lues, requêtes du module de Traefik, une collecte par hôte (voir [Sécurité](securite.md#crowdsec)). Sur Luxembourg, par un réseau réservé à CrowdSec et à Vigie ; sur Bruxelles, par son Traefik derrière la liste d’accès interne, qui ne transmet que `/metrics` et joint CrowdSec par son réseau réservé, sans le mettre sur le réseau proxy.
-- **Journaux d’accès :** [Vector](https://vector.dev/), sur chaque hôte, lit la sortie du conteneur Traefik par une vue en lecture seule de l’API Docker et l’envoie à VictoriaLogs : un enregistrement par requête, avec l’adresse du client, le domaine, le chemin, le code et la taille de la réponse, le routeur, l’agent utilisateur et la durée. Bruxelles l’envoie par le VPN à une seule adresse d’écriture de Vigie, derrière sa liste d’accès interne.
+- **Journaux d’accès :** [Vector](https://vector.dev/), sur chaque hôte, lit la sortie des conteneurs Traefik et CrowdSec (seulement ses bannissements) par une vue en lecture seule de l’API Docker et l’envoie à VictoriaLogs : un enregistrement par requête, avec l’adresse du client, le domaine, le chemin, le code et la taille de la réponse, le routeur, l’agent utilisateur et la durée. Bruxelles l’envoie par le VPN à une seule adresse d’écriture de Vigie, derrière sa liste d’accès interne.
 - **Conservation :** une mesure toutes les 30 secondes, gardée trois mois ; les journaux d’accès, 14 jours (2 Gio au plus).
 - **Tableaux de bord**, provisionnés depuis le dépôt : Traefik, journaux Traefik (filtrés par hôte, client, domaine et code de réponse), hôtes (processeur, mémoire, espace des pools ZFS, trafic réseau, débit et occupation des disques, consommation de chaque application, températures, décalage de l’horloge, processus tués faute de mémoire et redémarrages des conteneurs), disponibilité (part de vérifications Gatus réussies et temps de réponse de chaque service sur 30 jours, expiration des certificats de Traefik et de ceux que voit Gatus), CrowdSec, limitation des connexions et sauvegardes (dernier passage, taille du dépôt sur Google Drive, volume ajouté et débit d’envoi chaque nuit).
 
@@ -82,11 +82,16 @@ Vigie fait aussi tourner le serveur [MCP](https://modelcontextprotocol.io/) offi
 
 ### 🔎 Interroger les journaux {#journaux}
 
-Le tableau de bord des journaux Traefik filtre par hôte, adresse cliente, domaine et code de réponse. Pour aller plus loin, **Explore → VictoriaLogs** accepte toute requête [LogsQL](https://docs.victoriametrics.com/victorialogs/logsql/), par exemple :
+Le tableau de bord des journaux Traefik filtre par hôte, adresse cliente, domaine et code de réponse, sur les dernières 24 heures par défaut. Il montre les codes de réponse, les domaines en erreur, les chemins, les agents utilisateurs, les requêtes d’écriture (`POST`, `PUT`, `PATCH`, `DELETE` : connexions, inscriptions, envois) et les bannissements de CrowdSec : Vector lit aussi les décisions de CrowdSec et range l’adresse bannie dans le même champ `ClientHost`, si bien qu’un seul filtre retrouve les requêtes d’une adresse et ses bannissements.
+
+**Une adresse est-elle passée ?** Mettre l’adresse dans le champ client, ou tout un bloc avec `ipv4_range("203.0.113.0/24")`, et la période à « Last 14 days », la durée de conservation. Un balayeur se reconnaît à ses chemins (`/.env`, `/api/config`, `/_synapse/admin`, inscriptions) et à des agents utilisateurs qui changent ou se réduisent à `curl`.
+
+Pour aller plus loin, **Explore → VictoriaLogs** accepte toute requête [LogsQL](https://docs.victoriametrics.com/victorialogs/logsql/), par exemple :
 
 ```
 ClientHost:="203.0.113.7" DownstreamStatus:=200 | fields _time, RequestHost, RequestPath, DownstreamContentSize, RouterName, request_User-Agent
 RequestHost:="simrepo.dera.page" DownstreamStatus:>=400 | stats by (DownstreamStatus) count()
+{container_name="crowdsec"} ClientHost:="203.0.113.7" | fields _time, host, scenario, duration
 ```
 
 Un [assistant IA](assistants.md#grafana) pose les mêmes requêtes par le serveur MCP de Grafana.
