@@ -105,7 +105,7 @@ Mise en place, une fois :
 La boutique Mini Train Store (<RepositoryReference path="services/boutique" />, [Vendure](https://vendure.io/)) tourne sur Bruxelles, pour l’instant sur un site de test privé, `test.minitrainstore.fr`. Son serveur Vendure contient un serveur MCP (`/mcp/admin`) : il donne à l’agent les outils de gestion de la boutique (annonces, commandes à expédier, clients en lecture), sans conteneur de plus. Les outils et leurs garde-fous sont décrits dans le dépôt de la boutique (`docs/conception/12-mcp.md`).
 
 - **Adresse à part :** le serveur MCP et son OAuth ne sont servis qu’à l’adresse `mcp.test.minitrainstore.fr`, accessible uniquement depuis le réseau local ou le VPN. Elle mène au serveur Vendure entier : c’est l’émetteur OAuth (ses `/.well-known/…` y sont), et la page de consentement du Dashboard s’y ouvre. Sur `test.minitrainstore.fr`, `/mcp` et `/.well-known/oauth-*` ne mènent jamais au serveur ; la CI le vérifie.
-- **MCPHub :** il tourne sur le même hôte et rejoint cette adresse en repassant par Traefik, qui le voit alors arriver d’une adresse Docker (`172.16.0.0/12`), refusée par la liste d’accès interne. Une seconde route, réservée à ces adresses, le laisse passer ; l’OAuth protège toujours le serveur MCP.
+- **MCPHub :** il tourne sur le même hôte et rejoint cette adresse en repassant par Traefik, qui le voit alors arriver d’une adresse Docker (`172.16.0.0/12`), refusée par la liste d’accès interne. Une seconde route, réservée à ces adresses, le laisse passer ; l’OAuth protège toujours le serveur MCP. L’optimiseur d’images du site (`/_next/image`) va chercher les photos de la même façon, à l’adresse du site : une route `/assets` réservée aux conteneurs de l’hôte le laisse passer, et le reste du site garde la liste d’accès.
 - **Droits :** l’agent agit avec les droits du compte qui approuve la connexion. On approuve donc avec le compte dédié à l’agent (rôle « Agent LLM » : pas de suppression, pas de paramètres, pas d’étiquette Mondial Relay), jamais avec le compte SuperAdmin.
 - **Jetons :** MCPHub reçoit un jeton d’accès de 15 minutes, qu’il renouvelle seul. Les connexions se consultent et se révoquent dans le Dashboard (**Paramètres > MCP**). `MCP_OAUTH_TOKEN_SECRET` sert à hacher les jetons enregistrés : le changer déconnecte tous les agents.
 
@@ -121,7 +121,7 @@ Les valeurs se limitent aux lettres, aux chiffres et à `._~:/+=@!,-`, car Compo
 Mise en place, une fois :
 
 1. Remplir le coffre, puis `mise deploy services/boutique/deploy.yml`.
-2. Sur Bruxelles, dans le dossier de la boutique, créer la configuration initiale (pays, taxes, livraison, rôle « Agent LLM ») : `docker compose --profile seed run --rm seed`. Ajouter aussi la base `boutique` à l’outil de sauvegarde des bases.
+2. Sur Bruxelles, dans le dossier de la boutique, créer la configuration initiale (pays, taxes, livraison, rôle « Agent LLM ») : `sudo docker compose -f /mnt/Donnees/Applications_chiffrees/Boutique/compose.yml --profile seed run --rm -T seed` (le dossier n’est lisible que par root, d’où `-f` plutôt qu’un `cd`). Ajouter aussi la base `boutique` à l’outil de sauvegarde des bases.
 3. Dans le Dashboard (`https://test.minitrainstore.fr/dashboard`, compte SuperAdmin) : **Administrateurs > Nouveau**, un compte pour l’agent, avec son adresse et son mot de passe, et le rôle « Agent LLM ».
 
 Le serveur se branche ensuite dans l’interface de MCPHub, pas dans le dépôt :
@@ -137,43 +137,48 @@ Pour essayer le site de test avec le catalogue du poste de développement (annon
 
 La base du poste contient des clients et leurs adresses : les fichiers d’import ne se partagent pas et se suppriment une fois l’import fait, et le site de test reste privé.
 
-Sur le poste, depuis le dépôt de la boutique (serveur Vendure local arrêté, base locale démarrée) :
+Sur le poste, depuis n’importe quel dossier (base locale démarrée). `rsync` reprend là où il s’est arrêté si la connexion coupe :
 
 ```bash
-docker exec mts-vendure-db pg_dump -U vendure -d vendure --format=custom --no-owner --no-privileges > boutique.dump
-tar -C server/static -cf boutique-fichiers.tar assets assets-originals invoices/generated labels
-scp boutique.dump boutique-fichiers.tar <utilisateur>@local.bruxelles.anneraud.fr:
+B=~/Git/MiniTrainStore/boutique/server/static
+docker exec mts-vendure-db pg_dump -U vendure -d vendure -Fc --no-owner --no-privileges > /tmp/boutique.dump
+rsync -a --info=progress2 /tmp/boutique.dump "$B/assets" "$B/assets-originals" "$B/labels" "$B/invoices/generated" <utilisateur>@local.bruxelles.anneraud.fr:boutique-import/
+rm /tmp/boutique.dump
 ```
 
-Sur Bruxelles, dans le dossier de la boutique :
+Sur Bruxelles, `ls ~/boutique-import` doit montrer `assets`, `assets-originals`, `boutique.dump`, `generated` et `labels`. Le dossier de la boutique n’est lisible que par root : l’import passe par un script lancé avec `sudo`, écrit dans un fichier (un bloc envoyé à `bash` par l’entrée standard serait avalé par le premier `docker compose exec`, d’où aussi les `</dev/null` et le `-T`). Remplacer `<dossier personnel>` par le résultat de `echo ~` :
 
 ```bash
+cat > ~/import-boutique.sh <<'EOF'
+set -euo pipefail
+IMPORT="<dossier personnel>/boutique-import"
 cd /mnt/Donnees/Applications_chiffrees/Boutique
-sudo docker compose stop server worker storefront
-
+docker compose stop server worker storefront
 # La base : vidée, puis remplacée par celle du poste
-sudo docker compose exec -T postgres dropdb -U boutique --force boutique
-sudo docker compose exec -T postgres createdb -U boutique boutique
-sudo docker compose exec -T postgres pg_restore -U boutique -d boutique --no-owner --no-privileges --exit-on-error < ~/boutique.dump
-
+docker compose exec -T postgres dropdb -U boutique --if-exists --force boutique </dev/null
+docker compose exec -T postgres createdb -U boutique boutique </dev/null
+docker compose exec -T postgres pg_restore -U boutique -d boutique --no-owner --no-privileges --exit-on-error < "$IMPORT/boutique.dump"
 # Sessions et connexions MCP du poste : inutilisables ici (autre secret), on les efface
-sudo docker compose exec -T postgres psql -U boutique -d boutique -c "TRUNCATE mcp_authorization_code, mcp_authorization_request, mcp_tool_call_log, mcp_oauth_grant, mcp_oauth_client, session, api_key CASCADE;"
-
+docker compose exec -T postgres psql -U boutique -d boutique -c "TRUNCATE mcp_authorization_code, mcp_authorization_request, mcp_tool_call_log, mcp_oauth_grant, mcp_oauth_client, session, api_key CASCADE;" </dev/null
 # Les photos, leurs originaux, les factures et les étiquettes, rendus à l’utilisateur node (1000)
-sudo find Assets Assets_originals Invoices Labels -mindepth 1 -delete
-sudo tar -xf ~/boutique-fichiers.tar --transform 's,^assets-originals,Assets_originals,;s,^assets,Assets,;s,^invoices/generated,Invoices,;s,^labels,Labels,'
-sudo chown -R 1000:1000 Assets Assets_originals Invoices Labels
-
-sudo docker compose up -d
-sudo docker compose --profile seed run --rm seed
-rm ~/boutique.dump ~/boutique-fichiers.tar
+rsync -a --delete "$IMPORT/assets/" Assets/
+rsync -a --delete "$IMPORT/assets-originals/" Assets_originals/
+rsync -a --delete "$IMPORT/generated/" Invoices/
+rsync -a --delete "$IMPORT/labels/" Labels/
+chown -R 1000:1000 Assets Assets_originals Invoices Labels
+docker compose up -d
+docker compose --profile seed run --rm -T seed </dev/null
+echo "Import terminé"
+EOF
+sudo bash ~/import-boutique.sh
 ```
+
+Le script peut être relancé tel quel en cas d’échec. Une fois le site vérifié : `rm -r ~/boutique-import ~/import-boutique.sh`.
 
 Puis :
 
 1. **Compte SuperAdmin :** la base importée garde les comptes du poste. Se connecter au Dashboard avec le mot de passe SuperAdmin du poste (`server/.env`), puis le remplacer par `boutique_superadmin_password` (**Profil**).
 2. **Agent :** recréer son compte (étape 3 de la mise en place) et le reconnecter dans MCPHub (**Connect**).
 3. **Vérifier :** l’accueil, une fiche produit avec ses photos et, dans le Dashboard, la liste des commandes.
-4. Supprimer aussi `boutique.dump` et `boutique-fichiers.tar` du poste.
 
 Les e-mails restent coupés tant que `SMTP_HOST` est vide : l’import n’écrit à aucun client.
