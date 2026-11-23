@@ -51,7 +51,7 @@ zitadel_users:
 - Un utilisateur sans `temporary_password` reçoit le courriel d’invitation de Zitadel.
 - L’un comme l’autre n’a lieu qu’à la création : ajouter `temporary_password` à un compte existant ne change rien ; le mot de passe se réinitialise alors depuis la console.
 - Les rôles d’un projet (`roles`) décident des droits dans le service correspondant, par exemple administrateur ou lecteur de la [supervision](supervision.md#connexion).
-- Pour un projet marqué `require_role` dans `applications.auto.tfvars`, Zitadel refuse la connexion à qui n’a aucun rôle sur ce projet : c’est le cas de Home Assistant (projet `Maison`, rôle `maison`), qui crée un compte à quiconque se connecte.
+- Pour un projet marqué `require_role` dans `applications.auto.tfvars`, Zitadel refuse la connexion à qui n’a aucun rôle sur ce projet : c’est le cas de Home Assistant (projet `Maison`, rôle `maison`), qui crée un compte à quiconque se connecte, et de recto (projet `Impression`, rôle `impression`).
 
 ## 🔌 Raccorder un service {#raccorder}
 
@@ -98,5 +98,6 @@ Les autres entrées restent en place ; Paperless redémarre à l’enregistremen
 | Paperless               | `paperless`         | compte Paperless existant, relié par l’utilisateur                                 |
 | Déploiement (Semaphore) | `deploiement`       | compte créé à la première connexion, à promouvoir à la main                        |
 | Home Assistant          | `maison`            | rôle `maison` requis ; compte créé à la première connexion, à promouvoir à la main |
+| Impression (recto)      | `impression`        | rôle `impression` requis ; rôle `impression-admin` : administrateur                |
 
 Chaque service garde son compte administrateur local en secours, en particulier Semaphore, qui déploie Zitadel lui-même.

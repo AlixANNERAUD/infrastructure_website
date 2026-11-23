@@ -72,6 +72,8 @@ Des caméras de surveillance extérieures sont reliées au réseau local du site
 
 ## 🖨️ Imprimantes
 
+Les imprimantes sont partagées par [Impression](services.md#quotidien), recto sur Bruxelles (<RepositoryReference path="services/impression" />) : on imprime et numérise depuis le navigateur, et les ordinateurs et téléphones du réseau local la trouvent d’eux-mêmes (AirPrint, Mopria), sans pilote. CUPS, derrière recto, détient les pilotes ; les imprimantes s’ajoutent depuis la page Imprimantes de recto. La connexion passe par [Zitadel](authentification.md#services).
+
 ### Madrid
 
 Imprimante à jet d’encre pour les impressions occasionnelles.
