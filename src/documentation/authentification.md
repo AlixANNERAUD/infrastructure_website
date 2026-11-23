@@ -50,7 +50,7 @@ zitadel_users:
 
 - Un utilisateur sans `temporary_password` reçoit le courriel d’invitation de Zitadel.
 - L’un comme l’autre n’a lieu qu’à la création : ajouter `temporary_password` à un compte existant ne change rien ; le mot de passe se réinitialise alors depuis la console.
-- Les rôles d’un projet (`roles`) décident des droits dans le service correspondant, par exemple administrateur ou lecteur de la [supervision](supervision.md#connexion).
+- Les rôles d’un projet (`roles`) décident des droits dans le service correspondant, par exemple administrateur ou lecteur de la [supervision](supervision.md#connexion). Chaque projet transmet ses rôles au service dans la réponse UserInfo, sous `urn:zitadel:iam:org:project:roles` (`project_role_assertion`) : sans cela, Zitadel ne les envoie qu’aux services qui demandent chaque rôle par un scope.
 - Pour un projet marqué `require_role` dans `applications.auto.tfvars`, Zitadel refuse la connexion à qui n’a aucun rôle sur ce projet : c’est le cas de Home Assistant (projet `Maison`, rôle `maison`), qui crée un compte à quiconque se connecte, et de recto (projet `Impression`, rôle `impression`).
 
 ## 🔌 Raccorder un service {#raccorder}
