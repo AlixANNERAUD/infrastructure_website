@@ -94,10 +94,13 @@ Dans le dépôt, les chemins sont `/source/<jeu de données sans Donnees/>`. San
 
 Les réplications de Bruxelles vers Paris et Pristina sont déclenchées par des tâches de réplication TrueNAS. Un minuteur systemd les déclenche sur les deux hôtes toutes les 12 heures. Cette automatisation déclenche la réplication ; elle ne remplace pas une procédure de restauration testée.
 
-<RepositoryReference path="hosts/replication.yml" /> donne à chaque client du groupe `replication` un compte `replication` et sa clé, et installe sur Bruxelles une commande forcée qui ne lance que la tâche de réplication de ce client : la clé d’API de TrueNAS ne quitte jamais Bruxelles. Mise en place, une fois :
+<RepositoryReference path="hosts/replication.yml" /> donne à chaque client du groupe `replication` un compte `replication` et sa clé. Sur Bruxelles, il crée l’utilisateur `replication` et ses clés autorisées par l’API de TrueNAS (`midclt`) : TrueNAS réécrit lui-même ses fichiers d’utilisateurs. Chaque clé ne peut lancer qu’une commande forcée, avec la tâche de réplication de son client (`bruxelles_replication_identifier` de l’inventaire). Le playbook ne copie la clé d’API de TrueNAS que sur Bruxelles.
 
-1. `mise deploy hosts/replication.yml` : tant que l’utilisateur `replication` n’existe pas dans TrueNAS, le playbook explique comment le créer.
-2. Coller les lignes `command="…",restrict ssh-ed25519 …` qu’il affiche dans les clés autorisées de cet utilisateur ; il ne les affiche que tant qu’elles manquent.
+- **Résultat :** la commande forcée attend la fin de la tâche. Le service `bruxelles-replicate` du client échoue quand la réplication échoue, et son journal montre l’avancement (`journalctl -u bruxelles-replicate`).
+- **Arrêt et veille :** pendant la réplication, le client prend un verrou `systemd-inhibit` qui bloque la mise en veille et l’arrêt. Un arrêt demandé dans ce temps est refusé, ou demande de forcer.
+- **Clés :** un client éteint pendant le déploiement garde sa clé actuelle si elle vise la même tâche, et le playbook le signale. La clé d’un client retiré du groupe `replication` est supprimée.
+
+Mise en place : `mise deploy hosts/replication.yml`, avec les clients allumés. Les tâches de réplication elles-mêmes restent configurées dans l’interface de TrueNAS (**Data Protection → Replication Tasks**).
 
 En cas de perte de données ou d’un serveur :
 
