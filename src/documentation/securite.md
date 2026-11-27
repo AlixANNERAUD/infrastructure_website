@@ -192,6 +192,26 @@ mise exec -- uv run ansible-vault view vault/<service>/vault.yml
 
 La première commande qui a besoin du mot de passe le demande, le vérifie sur `vault/ansible/vault.yml` et le range dans le trousseau. Sur une machine sans trousseau, la variable `ANSIBLE_VAULT_PASSWORD` le remplace.
 
+### 🔏 Coffre de signature de Xila {#coffre-xila}
+
+Le coffre [OpenBao](https://openbao.org/) de <RepositoryReference path="services/secrets_xila" /> garde les clés qui signent les applications de Xila. Perdre ce coffre, c’est perdre l’identité qui signe : il doit pouvoir s’ouvrir sur n’importe quelle machine, à partir de n’importe quelle copie.
+
+- **Clés de déverrouillage :** OpenBao découpe sa clé maîtresse en 3 clés (Shamir) ; 2 suffisent à le déverrouiller. Une clé perdue ne coûte rien, une clé volée ne suffit pas.
+- **Rangement :** une clé dans le gestionnaire de mots de passe, une sur papier à la maison, une sur papier ailleurs. Jamais sur Bruxelles, dans ce dépôt ou dans le coffre Ansible.
+- **Déverrouillage au démarrage :** le conteneur `deverrouillage` garde 2 clés chiffrées par le TPM de Bruxelles, dans `cles/` du dossier du service. Toutes les 30 secondes, il regarde si OpenBao est scellé ; si oui, le TPM déchiffre les clés et le conteneur les envoie à OpenBao. Les clés ne restent qu’en mémoire, et le conteneur vérifie la clé publique d’OpenBao avant de les envoyer.
+- **Copies :** les répliques de Paris et Pristina et la copie sur Google Drive contiennent les données d’OpenBao et les clés chiffrées par le TPM. Sans le TPM de Bruxelles, seules les clés papier ouvrent ces copies.
+- **Limites :** le TPM protège les disques, les répliques et les sauvegardes lus ailleurs. Il ne protège pas contre un accès root à Bruxelles en marche. Les clés chiffrées ne dépendent pas de l’état du démarrage (PCR) : une mise à jour de TrueNAS ou du micrologiciel ne les casse pas. Un effacement du TPM ou une nouvelle carte mère les rend inutilisables : il faut alors les chiffrer de nouveau.
+
+Mise en place, une fois, puis après chaque effacement du TPM ou changement de carte mère. Les commandes `docker compose` se lancent sur Bruxelles, dans `/mnt/Donnees/Applications_chiffrees/Vault_xila` :
+
+1. Déployer : `mise deploy services/secrets_xila/deploy.yml`. Pour repartir de zéro, arrêter la pile (`sudo docker compose down`), vider `data/` (`sudo find data -mindepth 1 -delete`), puis déployer de nouveau.
+2. Initialiser, si le coffre est neuf : `sudo docker compose exec openbao bao operator init -key-shares=3 -key-threshold=2 -address=https://127.0.0.1:8200 -tls-skip-verify`. Ranger les 3 clés comme ci-dessus, et garder le jeton root pour l’étape 5.
+3. Chiffrer 2 des clés avec le TPM : `sudo docker compose run --rm deverrouillage sceller`, taper une clé par ligne (elles ne s’affichent pas), puis une ligne vide. Les nouvelles clés chiffrées remplacent les anciennes.
+4. Vérifier : `sudo docker compose restart openbao`, qui redémarre OpenBao scellé, puis `sudo docker compose logs --since 2m deverrouillage` doit afficher `OpenBao is unsealed` dans les 30 secondes. Ce message seul ne prouve rien : il apparaît aussi quand OpenBao était déjà déverrouillé.
+5. Configurer la signature depuis le poste (`services/secrets_xila/configure-signing.yml`, avec le jeton root), puis révoquer le jeton root : `bao token revoke -self`. Avec 2 clés, `bao operator generate-root` en recrée un au besoin.
+
+Chaque déploiement recrée OpenBao, qui redémarre scellé : le conteneur `deverrouillage` le déverrouille dans les 30 secondes. Si le TPM ou OpenBao refuse une clé chiffrée, il réessaie toutes les 5 minutes, et `sudo docker compose logs deverrouillage` dit lequel des deux l’a refusée.
+
 ## 🧩 Cloisonnement des réseaux {#cloisonnement}
 
 - **Bases de données :** les bases des services déployés par Ansible sont sur des réseaux Docker internes, sans route vers Internet ; celles que l’outil de sauvegarde des bases doit joindre partagent en plus un réseau avec lui. Un réseau par base de données, pour que les bases ne se voient plus entre elles, est prévu.

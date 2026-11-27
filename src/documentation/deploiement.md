@@ -32,7 +32,7 @@ Chaque service Docker Compose est déployé par le même rôle, <RepositoryRefer
 
 Le rôle signale aussi un réseau existant qui ne correspond plus à sa déclaration, sans jamais le recréer de lui-même : recréer un réseau déconnecterait tous ses conteneurs.
 
-Un seul service échappe au rôle : le coffre de signature de Xila (OpenBao), qui gère lui-même son certificat et doit rester descellé.
+Un seul service échappe au rôle : le coffre de signature de Xila (OpenBao), qui gère lui-même son certificat et se déverrouille avec le TPM de Bruxelles (voir [Sécurité](securite.md#coffre-xila)).
 
 Le rôle est testé par [Molecule](https://ansible.readthedocs.io/projects/molecule/) sur une pile de test locale : création, idempotence, redémarrage quand un fichier change.
 
